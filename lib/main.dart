@@ -2,29 +2,33 @@ import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'screens/auth_screen.dart';
 import 'screens/dashboard_screen.dart';
+import 'package:firebase_core/firebase_core.dart';
 
 void main() async {
-  // 1. Initialize Flutter engine
   WidgetsFlutterBinding.ensureInitialized();
-
-  // 2. Check phone memory for login status
+  await Firebase.initializeApp();
   SharedPreferences prefs = await SharedPreferences.getInstance();
   bool isLoggedIn = prefs.getBool('isLoggedIn') ?? false;
-
-  // 3. Start the app
-  runApp(SalonOwnerApp(startScreen: isLoggedIn ? DashboardScreen() : AuthScreen()));
+  Widget initialScreen = isLoggedIn ? const DashboardScreen() : AuthScreen();
+  runApp(SalonOwnerApp(startScreen: initialScreen));
 }
 
 class SalonOwnerApp extends StatelessWidget {
   final Widget startScreen;
-  SalonOwnerApp({required this.startScreen});
+
+  // This is the single, clean constructor
+  const SalonOwnerApp({super.key, required this.startScreen});
 
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
       debugShowCheckedModeBanner: false,
-      theme: ThemeData(primarySwatch: Colors.teal, useMaterial3: true),
-      home: startScreen, // Dynamically chooses Login or Dashboard
+      theme: ThemeData(
+          brightness: Brightness.dark, // Fits your "Digital Sanctuary" vision
+          primarySwatch: Colors.teal,
+          useMaterial3: true
+      ),
+      home: startScreen,
     );
   }
 }

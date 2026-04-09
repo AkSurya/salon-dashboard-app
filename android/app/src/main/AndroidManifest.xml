@@ -1,4 +1,5 @@
-<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    package="com.dashboard.salon">
     <application
         android:label="salon_dashboard_app"
         android:name="${applicationName}"

@@ -4,7 +4,8 @@ import 'support_screen.dart';
 
 class ProfileScreen extends StatelessWidget {
   final VoidCallback onOpenSettings;
-  const ProfileScreen({super.key, required this.onOpenSettings});
+  final VoidCallback onOpenServices;
+  const ProfileScreen({super.key, required this.onOpenSettings, required this.onOpenServices,});
 
   @override
   Widget build(BuildContext context) {
@@ -58,7 +59,7 @@ class ProfileScreen extends StatelessWidget {
               subtitle: "Edit prices and service duration",
               textColor: textColor,
               subTextColor: subTextColor!,
-              onTap: () {},
+              onTap: onOpenServices,
             ),
             _buildProfileOption(
               icon: Icons.location_on_outlined,

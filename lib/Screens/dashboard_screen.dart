@@ -5,6 +5,8 @@ import 'auth_screen.dart';
 import 'profile_screen.dart';
 import 'settings_screen.dart';
 import 'package:syncfusion_flutter_charts/charts.dart';
+import 'edit_services_screen.dart';
+import 'emergency_screen.dart';
 
 class DashboardScreen extends StatefulWidget {
   const DashboardScreen({super.key});
@@ -16,6 +18,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
   bool _isDarkMode = false;
   bool _isAutoApproveEnabled = false;
   bool _isGapProtectorEnabled = false;
+  bool _isZenMode = false;
   int _gapDuration = 10;
   double _dailyGoal = 50000;
   List<Map<String, dynamic>> salesHistory = [];
@@ -95,6 +98,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
             ActiveSessionPage(
               isDarkMode: _isDarkMode,
               sessionData: _activeSession,
+              bookings: bookings,
               onClear: () {
                 if (_activeSession != null) {
                   final service = salonServices.firstWhere(
@@ -131,20 +135,21 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   MaterialPageRoute(
                     builder: (context) => SettingsScreen(
                       isAutoApprove: _isAutoApproveEnabled,
-                      onToggleAutoApprove: (val) {
-                        setState(() {
-                          _isAutoApproveEnabled = val;
-                        });
-                      },
+                      onToggleAutoApprove: (val) => setState(() => _isAutoApproveEnabled = val),
                       isGapProtectorEnabled: _isGapProtectorEnabled,
                       gapDuration: _gapDuration,
-                      onToggleGapProtector: (val) {
-                        setState(() {
-                          _isGapProtectorEnabled = val;
-                        });
-                      },
+                      onToggleGapProtector: (val) => setState(() => _isGapProtectorEnabled = val),
                       onGapDurationChanged: (val) => setState(() => _gapDuration = val),
                     ),
+                  ),
+                );
+              },
+              // THIS IS THE FIX:
+              onOpenServices: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => const EditServicesScreen(),
                   ),
                 );
               },
@@ -446,6 +451,25 @@ class _DashboardScreenState extends State<DashboardScreen> {
         onChanged: onChanged,
       ),
     );
+  }
+  void showEmergencyRequest(String name, String service, String time) async {
+    // This pushes the screen on top of everything
+    final result = await Navigator.push(
+      context,
+      MaterialPageRoute(
+        fullscreenDialog: true, // Makes it feel like a system event
+        builder: (context) => EmergencyRequestScreen(
+          customerName: name,
+          service: service,
+          requestedTime: time,
+        ),
+      ),
+    );
+
+    if (result != null && result != "REJECTED") {
+      // Logic to add to your schedule automatically!
+      print("Accepted for: $result");
+    }
   }
 }
 
@@ -1181,21 +1205,189 @@ class ProfessionalPiePainter extends CustomPainter {
 }
 
 
-class ActiveSessionPage extends StatelessWidget {
+class ActiveSessionPage extends StatefulWidget {
   final bool isDarkMode;
   final Map<String, dynamic>? sessionData;
   final VoidCallback onClear;
-  const ActiveSessionPage({super.key, required this.isDarkMode, this.sessionData, required this.onClear});
+  final List<Map<String, dynamic>> bookings;
+  const ActiveSessionPage({super.key, required this.isDarkMode, this.sessionData, required this.onClear, required this.bookings,});
+  @override
+  State<ActiveSessionPage> createState() => _ActiveSessionPageState();
+}
+class _ActiveSessionPageState extends State<ActiveSessionPage> {
+  bool _isZenMode = false;
+  Widget _buildZenLayout() {
+    final textColor = widget.isDarkMode ? Colors.white : Colors.black;
+    return Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Text(
+            widget.sessionData?['customer']?.toUpperCase() ?? "",
+            style: TextStyle(
+                fontSize: 42,
+                letterSpacing: 8,
+                fontWeight: FontWeight.w200, // Ultra-thin "Jobs" style
+                color: textColor
+            ),
+          ),
+          const SizedBox(height: 10),
+          Text(
+            widget.sessionData?['service'] ?? "",
+            style: const TextStyle(color: Colors.teal, letterSpacing: 4),
+          ),
+          // Add a long-press gesture to exit Zen Mode
+          IconButton(
+            icon: const Icon(Icons.close_fullscreen, size: 16, color: Colors.grey),
+            onPressed: () => setState(() => _isZenMode = false),
+          )
+        ],
+      ),
+    );
+  }
+  Widget _buildPulseGhostCard(bool isDarkMode, List<Map<String, dynamic>> allBookings, Map<String, dynamic>? currentSession) {
+    // 1. Find the index of the current session to identify who is "Next"
+    int currentIndex = allBookings.indexWhere((b) => b['customer'] == currentSession?['customer']);
+
+    // 2. Grab the next person in the list
+    final nextBooking = (currentIndex != -1 && currentIndex + 1 < allBookings.length)
+        ? allBookings[currentIndex + 1]
+        : null;
+
+    if (nextBooking == null) return const SizedBox.shrink();
+
+    return Container(
+      margin: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: isDarkMode ? Colors.white.withOpacity(0.05) : Colors.black.withOpacity(0.03),
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(color: Colors.white.withOpacity(0.1)),
+      ),
+      child: Row(
+        children: [
+          // THE SHOP PULSE DOT
+          Container(
+            width: 10, height: 10,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              // Logic: If they are checked in, show Teal, otherwise Grey
+              color: nextBooking['isVerified'] == true ? Colors.teal : Colors.grey,
+            ),
+          ),
+          const SizedBox(width: 15),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Text("UP NEXT", style: TextStyle(fontSize: 10, letterSpacing: 1, color: Colors.grey, fontWeight: FontWeight.bold)),
+                Text(nextBooking['customer'], style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: isDarkMode ? Colors.white : Colors.black)),
+              ],
+            ),
+          ),
+          Text(nextBooking['service'], style: const TextStyle(color: Colors.teal, fontSize: 12, fontWeight: FontWeight.w600)),
+        ],
+      ),
+    );
+  }
+  Widget _buildActiveHeader(Map<String, dynamic>? session, Color textColor) {
+    if (session == null) return const Center(child: Text("No Active Session"));
+    return GestureDetector(
+      // TESTING TRIGGER: Long press the name to simulate an emergency
+        onLongPress: () => _triggerTestEmergency(context),
+        child: Padding(
+      padding: const EdgeInsets.all(30),
+      child: Column(
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.end,
+            children: [
+              IconButton(
+                icon: Icon(Icons.visibility_off_outlined, color: textColor.withOpacity(0.3)),
+                onPressed: () {
+                  setState(() {
+                    _isZenMode = true;
+                  });
+                },
+              ),
+            ],
+          ),
+          CircleAvatar(
+            radius: 50,
+            backgroundColor: Colors.teal.withOpacity(0.1),
+            child: Icon(Icons.person, size: 50, color: Colors.teal),
+          ),
+          const SizedBox(height: 20),
+          Text(
+            session['customer'],
+            style: TextStyle(fontSize: 32, fontWeight: FontWeight.bold, color: textColor),
+          ),
+          Text(
+            session['service'],
+            style: TextStyle(fontSize: 18, color: Colors.teal, fontWeight: FontWeight.w500),
+          ),
+        ],
+      ),
+    ),
+    );
+  }
   @override
   Widget build(BuildContext context) {
-    if (sessionData == null) return const Center(child: Text("Chair is empty. Verify an OTP!"));
-    return Padding(padding: const EdgeInsets.all(20), child: Column(children: [
-      Text("Active: ${sessionData!['customer']}", style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: isDarkMode ? Colors.white : Colors.black)),
-      const Divider(),
-      ListTile(title: const Text("Service"), trailing: Text(sessionData!['service'])),
-      const Spacer(),
-      ElevatedButton(onPressed: onClear, style: ElevatedButton.styleFrom(backgroundColor: Colors.red, minimumSize: const Size(double.infinity, 50)), child: const Text("Finish Session & Collect Payment", style: TextStyle(color: Colors.white))),
-    ]));
+    final textColor = widget.isDarkMode ? Colors.white : Colors.black;
+    final nextBooking = widget.bookings.length > 1 ? widget.bookings[1] : null;
+    final auraColor = _getAuraColor(nextBooking);
+    return AnimatedContainer(
+      duration: const Duration(seconds: 2), // The slow Jobs-style breath
+      curve: Curves.easeInOut,
+      decoration: BoxDecoration(
+        gradient: RadialGradient(
+          center: Alignment.topRight,
+          radius: 1.5,
+          colors: [
+            auraColor,
+            widget.isDarkMode ? const Color(0xFF121212) : Colors.white
+          ],
+        ),
+      ),
+      child: Scaffold(
+        backgroundColor: Colors.transparent, // Keeps the Aura visible
+        body: _isZenMode
+            ? _buildZenLayout() // If Zen is on, show the minimalist view
+            : Column(           // If Zen is off, show your EXACT existing code
+          children: [
+            const SizedBox(height: 60),
+            _buildActiveHeader(widget.sessionData, textColor),
+            const Spacer(),
+            _buildPulseGhostCard(widget.isDarkMode, widget.bookings, widget.sessionData),
+            Padding(
+              padding: const EdgeInsets.all(20),
+              child: ElevatedButton(
+                onPressed: widget.onClear,
+                style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.teal,
+                    minimumSize: const Size(double.infinity, 60),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15))
+                ),
+                child: const Text("FINISH SESSION", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+              ),
+            ),
+            const SizedBox(height: 20),
+          ],
+        ),
+      ),
+    );
+  }
+  Color _getAuraColor(Map<String, dynamic>? nextBooking) {
+    if (nextBooking == null) return Colors.transparent;
+
+
+    if (nextBooking['isVerified'] == true) {
+      return Colors.teal.withOpacity(0.15);
+    }
+
+
+    return Colors.transparent;
   }
 }
 
@@ -1610,3 +1802,30 @@ List<ChartData> _getWaveData() {
     ChartData('Sun', 3100),
   ];
 }
+void _triggerTestEmergency(BuildContext context) async {
+  // We import the screen we just made
+  final result = await Navigator.push(
+    context,
+    MaterialPageRoute(
+      fullscreenDialog: true,
+      builder: (context) => const EmergencyRequestScreen(
+        customerName: "Ishan (Test)",
+        service: "Emergency Fade",
+        requestedTime: "NOW",
+      ),
+    ),
+  );
+
+  if (result != null) {
+    debugPrint("Emergency Screen Result: $result");
+    // Show a small toast to confirm the choice worked
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text("Action: $result"),
+        backgroundColor: Colors.teal,
+      ),
+    );
+  }
+}
+
+
