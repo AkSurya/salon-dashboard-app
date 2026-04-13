@@ -1,14 +1,17 @@
 plugins {
     id("com.android.application")
-    id("kotlin-android")
+    // START: FlutterFire Configuration
     id("com.google.gms.google-services")
+    // END: FlutterFire Configuration
+    id("kotlin-android")
     // The Flutter Gradle Plugin must be applied after the Android and Kotlin Gradle plugins.
     id("dev.flutter.flutter-gradle-plugin")
 }
 
 android {
     namespace = "com.dashboard.salon"
-    compileSdk = 35 // Hardcoded for 2026 standards
+    compileSdk = flutter.compileSdkVersion
+    ndkVersion = flutter.ndkVersion
 
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
@@ -16,15 +19,18 @@ android {
     }
 
     kotlinOptions {
-        jvmTarget = "17"
+        jvmTarget = JavaVersion.VERSION_17.toString()
     }
 
     defaultConfig {
+        // TODO: Specify your own unique Application ID (https://developer.android.com/studio/build/application-id.html).
         applicationId = "com.dashboard.salon"
-        minSdk = 23    // Required for modern Firebase
-        targetSdk = 35
-        versionCode = 1
-        versionName = "1.0"
+        // You can update the following values to match your application needs.
+        // For more information, see: https://flutter.dev/to/review-gradle-config.
+        minSdk = flutter.minSdkVersion
+        targetSdk = flutter.targetSdkVersion
+        versionCode = flutter.versionCode
+        versionName = flutter.versionName
     }
 
     buildTypes {
@@ -35,16 +41,7 @@ android {
         }
     }
 }
-dependencies {
-    // Firebase BOM - manages all Firebase library versions
-    implementation(platform("com.google.firebase:firebase-bom:33.1.0"))
 
-    // Add only the Firebase services you're actually using, e.g.:
-    implementation("com.google.firebase:firebase-analytics")
-    implementation("com.google.firebase:firebase-auth")
-    implementation("com.google.firebase:firebase-firestore")
-    // implementation("com.google.firebase:firebase-storage")  // if needed
-}
 flutter {
     source = "../.."
 }

@@ -1,6 +1,7 @@
 {
   "project_info": {
     "project_number": "215789025643",
+    "firebase_url": "https://saloon-booking-app-beautiq-default-rtdb.asia-southeast1.firebasedatabase.app",
     "project_id": "saloon-booking-app-beautiq",
     "storage_bucket": "saloon-booking-app-beautiq.firebasestorage.app"
   },
@@ -28,7 +29,7 @@
       "client_info": {
         "mobilesdk_app_id": "1:215789025643:android:9eb84c3f387c7f3e4f342e",
         "android_client_info": {
-          "package_name": "com.dashboard.salon"
+          "package_name": "com.example.saloon_booking_app"
         }
       },
       "oauth_client": [],
