@@ -1,11 +1,82 @@
 import 'package:flutter/material.dart';
 import 'edit_services_screen.dart';
 import 'support_screen.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 
-class ProfileScreen extends StatelessWidget {
+class ProfileScreen extends StatefulWidget {
   final VoidCallback onOpenSettings;
   final VoidCallback onOpenServices;
-  const ProfileScreen({super.key, required this.onOpenSettings, required this.onOpenServices,});
+  const ProfileScreen({
+    super.key,
+    required this.onOpenSettings,
+    required this.onOpenServices,
+  });
+
+  @override
+  State<ProfileScreen> createState() => _ProfileScreenState();
+}
+
+class _ProfileScreenState extends State<ProfileScreen> {
+  // Track the salon name locally so UI updates instantly after edit
+  String? _cachedName;
+  String? _cachedAddress;
+
+  Future<void> _editSalonName(BuildContext context, String currentName) async {
+    final controller = TextEditingController(text: currentName);
+
+    final result = await showDialog<String>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text("Edit Salon Name"),
+        content: TextField(
+          controller: controller,
+          autofocus: true,
+          decoration: const InputDecoration(
+            labelText: "Salon Name",
+            border: OutlineInputBorder(),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text("Cancel"),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.teal),
+            onPressed: () => Navigator.pop(context, controller.text.trim()),
+            child: const Text("Save", style: TextStyle(color: Colors.white)),
+          ),
+        ],
+      ),
+    );
+
+    if (result != null && result.isNotEmpty) {
+      try {
+        final uid = FirebaseAuth.instance.currentUser?.uid;
+        if (uid == null) return;
+
+        await FirebaseFirestore.instance
+            .collection('salons')
+            .doc(uid)
+            .update({'name': result});
+
+        // Update local cache so UI refreshes instantly
+        setState(() => _cachedName = result);
+
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text("Salon name updated!"),
+            backgroundColor: Colors.teal,
+          ),
+        );
+      } catch (e) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text("Failed to update: $e")),
+        );
+      }
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -13,7 +84,8 @@ class ProfileScreen extends StatelessWidget {
     final bgColor = isDarkMode ? const Color(0xFF121212) : Colors.white;
     final textColor = isDarkMode ? Colors.white : Colors.black;
     final subTextColor = isDarkMode ? Colors.grey[400] : Colors.grey;
-    final iconCircleColor = isDarkMode ? const Color(0xFF1E1E1E) : Colors.teal.shade50;
+    final iconCircleColor =
+    isDarkMode ? const Color(0xFF1E1E1E) : Colors.teal.shade50;
 
     return Scaffold(
       backgroundColor: bgColor,
@@ -28,23 +100,78 @@ class ProfileScreen extends StatelessWidget {
                 children: [
                   Stack(
                     children: [
-                      CircleAvatar(radius: 50, backgroundColor: iconCircleColor, child: const Icon(Icons.person, size: 50, color: Colors.teal)),
-                      const Positioned(bottom: 0, right: 0, child: CircleAvatar(radius: 15, backgroundColor: Colors.teal, child: Icon(Icons.edit, size: 14, color: Colors.white))),
+                      CircleAvatar(
+                        radius: 50,
+                        backgroundColor: iconCircleColor,
+                        child: const Icon(Icons.person,
+                            size: 50, color: Colors.teal),
+                      ),
+                      const Positioned(
+                        bottom: 0,
+                        right: 0,
+                        child: CircleAvatar(
+                          radius: 15,
+                          backgroundColor: Colors.teal,
+                          child:
+                          Icon(Icons.edit, size: 14, color: Colors.white),
+                        ),
+                      ),
                     ],
                   ),
                   const SizedBox(width: 20),
                   Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Row(
+                    child: FutureBuilder<DocumentSnapshot>(
+                      future: FirebaseFirestore.instance
+                          .collection('salons')
+                          .doc(FirebaseAuth.instance.currentUser?.uid)
+                          .get(),
+                      builder: (context, snapshot) {
+                        // Use cached name if available (after edit), else use Firestore data
+                        final name = _cachedName ??
+                            (snapshot.data?.get('name') ?? 'Salon');
+                        final address = _cachedAddress ??
+                            (snapshot.data?.get('address') ?? '');
+
+                        // Cache initial values from Firestore
+                        if (_cachedName == null &&
+                            snapshot.hasData &&
+                            snapshot.data!.exists) {
+                          _cachedName = snapshot.data?.get('name') ?? 'Salon';
+                          _cachedAddress =
+                              snapshot.data?.get('address') ?? '';
+                        }
+
+                        return Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            Text("Glamour Salon", style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: textColor)),
-                            IconButton(onPressed: () {}, icon: const Icon(Icons.edit, size: 18, color: Colors.grey))
+                            Row(
+                              children: [
+                                Flexible(
+                                  child: Text(
+                                    name,
+                                    style: TextStyle(
+                                      fontSize: 22,
+                                      fontWeight: FontWeight.bold,
+                                      color: textColor,
+                                    ),
+                                  ),
+                                ),
+                                IconButton(
+                                  // ✅ Now functional — opens edit dialog
+                                  onPressed: () =>
+                                      _editSalonName(context, name),
+                                  icon: const Icon(Icons.edit,
+                                      size: 18, color: Colors.grey),
+                                ),
+                              ],
+                            ),
+                            Text(
+                              address,
+                              style: TextStyle(color: subTextColor),
+                            ),
                           ],
-                        ),
-                        Text("Premium Hair & Skin Care", style: TextStyle(color: subTextColor)),
-                      ],
+                        );
+                      },
                     ),
                   ),
                 ],
@@ -52,14 +179,13 @@ class ProfileScreen extends StatelessWidget {
             ),
             const SizedBox(height: 40),
 
-
             _buildProfileOption(
               icon: Icons.content_cut,
               title: "My Services",
               subtitle: "Edit prices and service duration",
               textColor: textColor,
               subTextColor: subTextColor!,
-              onTap: onOpenServices,
+              onTap: widget.onOpenServices,
             ),
             _buildProfileOption(
               icon: Icons.location_on_outlined,
@@ -84,8 +210,12 @@ class ProfileScreen extends StatelessWidget {
               textColor: textColor,
               subTextColor: subTextColor,
               onTap: () {
-
-                Navigator.push(context, MaterialPageRoute(builder: (context) => const SupportScreen()));
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => const SupportScreen(),
+                  ),
+                );
               },
             ),
             _buildProfileOption(
@@ -94,7 +224,7 @@ class ProfileScreen extends StatelessWidget {
               subtitle: "Control automation and AI features",
               textColor: textColor,
               subTextColor: subTextColor,
-              onTap: onOpenSettings,
+              onTap: widget.onOpenSettings,
             ),
           ],
         ),
@@ -113,7 +243,8 @@ class ProfileScreen extends StatelessWidget {
     return ListTile(
       onTap: onTap,
       leading: Icon(icon, color: Colors.teal),
-      title: Text(title, style: TextStyle(fontWeight: FontWeight.bold, color: textColor)),
+      title: Text(title,
+          style: TextStyle(fontWeight: FontWeight.bold, color: textColor)),
       subtitle: Text(subtitle, style: TextStyle(color: subTextColor)),
       trailing: const Icon(Icons.chevron_right, color: Colors.grey),
     );

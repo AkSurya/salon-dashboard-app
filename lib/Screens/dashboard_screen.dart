@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'dart:math';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'auth_screen.dart';
 import 'profile_screen.dart';
@@ -13,7 +15,12 @@ class DashboardScreen extends StatefulWidget {
   @override
   _DashboardScreenState createState() => _DashboardScreenState();
 }
-
+List<Map<String, dynamic>> salonServices = [
+  {"name": "Haircut", "price": 500, "duration": "30 min", "icon": Icons.content_cut},
+  {"name": "Beard Trim", "price": 200, "duration": "15 min", "icon": Icons.face},
+  {"name": "Facial", "price": 1200, "duration": "60 min", "icon": Icons.auto_awesome},
+  {"name": "Coloring", "price": 2500, "duration": "120 min", "icon": Icons.palette},
+];
 class _DashboardScreenState extends State<DashboardScreen> {
   bool _isDarkMode = false;
   bool _isAutoApproveEnabled = false;
@@ -24,29 +31,28 @@ class _DashboardScreenState extends State<DashboardScreen> {
   List<Map<String, dynamic>> salesHistory = [];
   double totalDailyEarnings = 45200.0;
 
-  List<Map<String, dynamic>> salonServices = [
-    {"name": "Haircut", "price": 500, "duration": "30 min", "icon": Icons.content_cut},
-    {"name": "Beard Trim", "price": 200, "duration": "15 min", "icon": Icons.face},
-    {"name": "Facial", "price": 1200, "duration": "60 min", "icon": Icons.auto_awesome},
-    {"name": "Coloring", "price": 2500, "duration": "120 min", "icon": Icons.palette},
-  ];
+  Stream<List<Map<String, dynamic>>> getBookingsStream() {
+    final salonId = FirebaseAuth.instance.currentUser!.uid;
+    return FirebaseFirestore.instance
+        .collection('bookings')
+        .where('salonId', isEqualTo: salonId)
+        .snapshots()
+        .map((snapshot) =>
+        snapshot.docs.map((doc) => {...doc.data(), 'id': doc.id}).toList());
+  }
 
-  List<Map<String, dynamic>> bookings = [
-    {"time": "10:00 AM", "customer": "Akshat", "service": "Haircut", "color": Colors.blue, "isVerified": false},
-    {"time": "11:30 AM", "customer": "Ishan", "service": "Shave", "color": Colors.orange, "isVerified": false},
-    {"time": "01:00 PM", "customer": "Wajahat", "service": "Coloring", "color": Colors.purple, "isVerified": false},
-    {"time": "02:30 PM", "customer": "Maahi", "service": "Facial", "color": Colors.teal, "isVerified": false},
-    {"time": "04:00 PM", "customer": "Ruhi", "service": "Facial", "color": Colors.pink, "isVerified": false},
-    {"time": "05:30 PM", "customer": "Sunidhi", "service": "Pedicure", "color": Colors.blue, "isVerified": false},
-  ];
+  Future<void> updateBookingStatus(String bookingId, String status) async {
+    await FirebaseFirestore.instance
+        .collection('bookings')
+        .doc(bookingId)
+        .update({'status': status});
+  }
 
   int _selectedIndex = 0;
   Map<String, dynamic>? _activeSession;
   bool _isScheduleExpanded = false;
 
-  Map<int, List<Map<String, dynamic>>> _monthlyRequests = {
-    15: [{"time": "10:00 AM", "customer": "Rohan", "service": "Haircut", "price": 300, "status": "pending"}],
-  };
+  Map<int, List<Map<String, dynamic>>> _monthlyRequests = {};
 
   int getVisitCount(String customerName) {
     return salesHistory.where((sale) => sale['customer'] == customerName).length;
@@ -79,82 +85,105 @@ class _DashboardScreenState extends State<DashboardScreen> {
             }),
           ],
         ),
-        body: IndexedStack(
-          index: _selectedIndex,
-          children: [
-            DashboardHomeContent(
-              isDarkMode: _isDarkMode,
-              isExpanded: _isScheduleExpanded,
-              onToggleExpand: () => setState(() => _isScheduleExpanded = !_isScheduleExpanded),
-              onVerified: (booking) => setState(() { _activeSession = booking; _selectedIndex = 1; }),
-              onOpenCalendar: () => _showCalendarDialog(),
-              onOpenServiceEditor: () => _showServiceEditor(context),
-              currentEarnings: totalDailyEarnings,
-              bookings: bookings,
-              salesHistory: salesHistory,
-              dailyTarget: _dailyGoal,
-              onTargetChanged: (newGoal) => setState(() => _dailyGoal = newGoal),
-            ),
-            ActiveSessionPage(
-              isDarkMode: _isDarkMode,
-              sessionData: _activeSession,
-              bookings: bookings,
-              onClear: () {
-                if (_activeSession != null) {
-                  final service = salonServices.firstWhere(
-                        (s) => s['name'] == _activeSession!['service'],
-                    orElse: () => {"name": "Service", "price": 0},
-                  );
-                  setState(() {
-                    salesHistory.add({
-                      "customer": _activeSession!['customer'],
-                      "service": _activeSession!['service'],
-                      "price": service['price'],
-                      "time": DateTime.now(),
-                    });
-                    totalDailyEarnings += service['price'];
-                    _activeSession = null;
-                  });
-                  _showReceipt(salesHistory.last['customer'], salesHistory.last['service'], salesHistory.last['price']);
-                }
-              },
-            ),
-            FullCalendarPage(
-              requests: _monthlyRequests,
-              isDarkMode: _isDarkMode,
-              onApprove: (day, index) => _approveRequest(day, index),
-            ),
-            InsightsPage(
-              salesHistory: salesHistory,
-              isDarkMode: _isDarkMode,
-            ),
-            ProfileScreen(
-              onOpenSettings: () {
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (context) => SettingsScreen(
-                      isAutoApprove: _isAutoApproveEnabled,
-                      onToggleAutoApprove: (val) => setState(() => _isAutoApproveEnabled = val),
-                      isGapProtectorEnabled: _isGapProtectorEnabled,
-                      gapDuration: _gapDuration,
-                      onToggleGapProtector: (val) => setState(() => _isGapProtectorEnabled = val),
-                      onGapDurationChanged: (val) => setState(() => _gapDuration = val),
-                    ),
-                  ),
-                );
-              },
-              // THIS IS THE FIX:
-              onOpenServices: () {
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (context) => const EditServicesScreen(),
-                  ),
-                );
-              },
-            ),
-          ],
+        body: StreamBuilder<List<Map<String, dynamic>>>(
+          stream: getBookingsStream(),
+          builder: (context, snapshot) {
+            final bookings = snapshot.data ?? [];
+
+            return IndexedStack(
+              index: _selectedIndex,
+              children: [
+                DashboardHomeContent(
+                  isDarkMode: _isDarkMode,
+                  isExpanded: _isScheduleExpanded,
+                  onToggleExpand: () =>
+                      setState(() => _isScheduleExpanded = !_isScheduleExpanded),
+                  onVerified: (booking) =>
+                      setState(() { _activeSession = booking; _selectedIndex = 1; }),
+                  onOpenCalendar: () => _showCalendarDialog(),
+                  onOpenServiceEditor: () => _showServiceEditor(context),
+                  currentEarnings: totalDailyEarnings,
+                  bookings: bookings,
+                  salesHistory: salesHistory,
+                  dailyTarget: _dailyGoal,
+                  onTargetChanged: (newGoal) =>
+                      setState(() => _dailyGoal = newGoal),
+                ),
+                ActiveSessionPage(
+                  isDarkMode: _isDarkMode,
+                  sessionData: _activeSession,
+                  bookings: bookings,
+                  onClear: () {
+                    if (_activeSession != null) {
+                      // Update Firestore when session finished
+                      if (_activeSession?['id'] != null) {
+                        FirebaseFirestore.instance
+                            .collection('bookings')
+                            .doc(_activeSession!['id'])
+                            .update({'status': 'completed'});
+                      }
+                      final service = salonServices.firstWhere(
+                            (s) => s['name'] == _activeSession!['service'],
+                        orElse: () => {"name": "Service", "price": 0},
+                      );
+                      setState(() {
+                        salesHistory.add({
+                          "customer": _activeSession!['customer'],
+                          "service": _activeSession!['service'],
+                          "price": service['price'],
+                          "time": DateTime.now(),
+                        });
+                        totalDailyEarnings += service['price'];
+                        _activeSession = null;
+                      });
+                      _showReceipt(
+                        salesHistory.last['customer'],
+                        salesHistory.last['service'],
+                        salesHistory.last['price'],
+                      );
+                    }
+                  },
+                ),
+                FullCalendarPage(
+                  requests: _monthlyRequests,
+                  isDarkMode: _isDarkMode,
+                  onApprove: (day, index) => _approveRequest(day, index),
+                ),
+                InsightsPage(
+                  salesHistory: salesHistory,
+                  isDarkMode: _isDarkMode,
+                ),
+                ProfileScreen(
+                  onOpenSettings: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (context) => SettingsScreen(
+                          isAutoApprove: _isAutoApproveEnabled,
+                          onToggleAutoApprove: (val) =>
+                              setState(() => _isAutoApproveEnabled = val),
+                          isGapProtectorEnabled: _isGapProtectorEnabled,
+                          gapDuration: _gapDuration,
+                          onToggleGapProtector: (val) =>
+                              setState(() => _isGapProtectorEnabled = val),
+                          onGapDurationChanged: (val) =>
+                              setState(() => _gapDuration = val),
+                        ),
+                      ),
+                    );
+                  },
+                  onOpenServices: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (context) => const EditServicesScreen(),
+                      ),
+                    );
+                  },
+                ),
+              ],
+            );
+          },
         ),
         floatingActionButton: FloatingActionButton(
           backgroundColor: Colors.teal,
@@ -223,9 +252,18 @@ class _DashboardScreenState extends State<DashboardScreen> {
           ]),
           actions: [
             TextButton(onPressed: () => Navigator.pop(context), child: const Text("Cancel")),
-            ElevatedButton(onPressed: () {
+            ElevatedButton(onPressed: () async {
               if (newName.isNotEmpty) {
-                setState(() => bookings.add({"time": "Just Now", "customer": newName, "service": selectedService, "color": Colors.teal, "isVerified": false}));
+    await FirebaseFirestore.instance.collection('bookings').add({
+      "time": "Just Now",
+      "customer": newName,
+      "service": selectedService,
+      "color": "teal",
+      "isVerified": false,
+      "salonId": FirebaseAuth.instance.currentUser!.uid,
+      "status": "confirmed",
+      "createdAt": FieldValue.serverTimestamp(),
+    });
                 Navigator.pop(context);
               }
             }, child: const Text("Add")),
@@ -351,24 +389,27 @@ class _DashboardScreenState extends State<DashboardScreen> {
   Widget _receiptRow(String label, String value, {bool isBold = false}) {
     return Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [Text(label), Text(value, style: TextStyle(fontWeight: isBold ? FontWeight.bold : null))]);
   }
-  void _approveRequest(int day, int requestIndex) {
-    setState(() {
+  void _approveRequest(int day, int requestIndex) async {
+
       var request = _monthlyRequests[day]![requestIndex];
-      bookings.add({
+      await FirebaseFirestore.instance.collection('bookings').add({
         "time": request['time'],
         "customer": request['customer'],
         "service": request['service'],
-        "color": Colors.purple,
-        "isVerified": false
+        "color": "purple",
+        "isVerified": false,
+        "salonId": FirebaseAuth.instance.currentUser!.uid,
+        "status": "pending",
+        "createdAt": FieldValue.serverTimestamp(),
       });
-
+      setState(() {
       _monthlyRequests[day]!.removeAt(requestIndex);
       if (_monthlyRequests[day]!.isEmpty) {
         _monthlyRequests.remove(day);
       }
     });
   }
-  void _handleNewIncomingRequest(Map<String, dynamic> newRequest, int day) {
+  void _handleNewIncomingRequest(Map<String, dynamic> newRequest, int day) async {
     String finalTime = newRequest['time'];
 
     if (_isGapProtectorEnabled) {
@@ -376,15 +417,16 @@ class _DashboardScreenState extends State<DashboardScreen> {
     }
 
     if (_isAutoApproveEnabled) {
-      setState(() {
-        bookings.add({
-          "time": newRequest['time'],
+        await FirebaseFirestore.instance.collection('bookings').add({
+          "time": finalTime,
           "customer": newRequest['customer'],
           "service": newRequest['service'],
-          "color": Colors.teal,
-          "isVerified": false
+          "color": "teal",
+          "isVerified": false,
+          "salonId": FirebaseAuth.instance.currentUser!.uid,
+          "status": "pending",
+          "createdAt": FieldValue.serverTimestamp(),
         });
-      });
 
       ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text("Auto-Approved: ${newRequest['customer']}"))
@@ -490,6 +532,23 @@ class DashboardHomeContent extends StatefulWidget {
 class _DashboardHomeContentState extends State<DashboardHomeContent> {
   String _selectedMainMetric = 'Revenue';
 
+  Color _mapColor(String? colorName) {
+    switch (colorName) {
+      case "teal":
+        return Colors.teal;
+      case "purple":
+        return Colors.purple;
+      case "orange":
+        return Colors.orange;
+      case "blue":
+        return Colors.blue;
+      case "pink":
+        return Colors.pink;
+      default:
+        return Colors.grey; // fallback
+    }
+  }
+
   void _verifyOTP(int index) {
     TextEditingController ctrl = TextEditingController();
     showDialog(
@@ -510,6 +569,13 @@ class _DashboardHomeContentState extends State<DashboardHomeContent> {
                 setState(() {
 
                   widget.bookings[index]['isVerified'] = true;
+                  FirebaseFirestore.instance
+                      .collection('bookings')
+                      .doc(widget.bookings[index]['id'])
+                      .update({
+                    'isVerified': true,
+                    'status': 'in_progress',
+                  });
                 });
                 Navigator.pop(context);
 
@@ -700,10 +766,10 @@ class _DashboardHomeContentState extends State<DashboardHomeContent> {
           children: [
             Row(
               children: [
-                Container(width: 6, height: 6, decoration: BoxDecoration(color: booking['color'], shape: BoxShape.circle)),
+                Container(width: 6, height: 6, decoration: BoxDecoration(color: _mapColor(booking['color'] as String?), shape: BoxShape.circle),),
                 const SizedBox(width: 6),
                 Text(
-                    booking['time'],
+                    booking['time']?.toString() ?? '',
                     style: TextStyle(
                         fontSize: 11,
                         fontWeight: FontWeight.bold,
@@ -715,7 +781,7 @@ class _DashboardHomeContentState extends State<DashboardHomeContent> {
             const Spacer(),
             Flexible(
               child: Text(
-                booking['customer'],
+                booking['customer']?.toString() ?? 'Customer',
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
                 style: TextStyle(
@@ -727,7 +793,7 @@ class _DashboardHomeContentState extends State<DashboardHomeContent> {
             ),
             Flexible(
               child: Text(
-                booking['service'],
+                booking['service']?.toString() ?? '',
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
                 style: TextStyle(
@@ -772,11 +838,11 @@ class _DashboardHomeContentState extends State<DashboardHomeContent> {
               width: 12,
               height: 12,
               decoration: BoxDecoration(
-                color: booking['color'],
+                color: _mapColor(booking['color'] as String?),
                 shape: BoxShape.circle,
                 boxShadow: [
                   BoxShadow(
-                      color: (booking['color'] as Color).withOpacity(0.4),
+              color: _mapColor(booking['color'] as String?).withOpacity(0.4),
                       blurRadius: 8,
                       spreadRadius: 2
                   )
@@ -1119,24 +1185,97 @@ class _DashboardHomeContentState extends State<DashboardHomeContent> {
 
 
   void _showBookingDetails(BuildContext context, Map<String, dynamic> booking, int index) {
+    final status = booking['status'] ?? 'pending';
+    final isEmergency = booking['isEmergency'] == true; // future use
+
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        title: Text(booking['customer'], style: const TextStyle(fontWeight: FontWeight.bold)),
+        title: Row(
+          children: [
+            Expanded(
+              child: Text(
+                booking['customer'] ?? 'Customer',
+                style: const TextStyle(fontWeight: FontWeight.bold),
+              ),
+            ),
+            // Emergency badge — ready for future use
+            if (isEmergency)
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                decoration: BoxDecoration(
+                  color: Colors.red,
+                  borderRadius: BorderRadius.circular(20),
+                ),
+                child: const Text(
+                  "EMERGENCY",
+                  style: TextStyle(color: Colors.white, fontSize: 10),
+                ),
+              ),
+          ],
+        ),
         content: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            _detailRow(Icons.bolt, "Service", booking['service']),
-            _detailRow(Icons.access_time, "Scheduled", booking['time']),
-            _detailRow(Icons.verified_user, "Status", booking['isVerified'] ? "Verified" : "Pending"),
+            _detailRow(Icons.bolt, "Service", booking['service'] ?? ''),
+            _detailRow(Icons.calendar_today, "Date", booking['date'] ?? 'Walk-in'),
+            _detailRow(Icons.access_time, "Time", booking['time'] ?? ''),
+            _detailRow(
+              Icons.info_outline,
+              "Status",
+              status == 'confirmed'
+                  ? "✅ Confirmed"
+                  : status == 'cancelled'
+                  ? "❌ Cancelled"
+                  : "⏳ Pending",
+            ),
+            _detailRow(
+              Icons.verified_user,
+              "Check-in",
+              booking['isVerified'] == true ? "Verified" : "Not yet",
+            ),
           ],
         ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(context), child: const Text("Back")),
-          if (!booking['isVerified'])
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text("Close"),
+          ),
+
+          // EMERGENCY: approve/decline — shown only for emergency bookings (future)
+          if (isEmergency && status == 'pending') ...[
+            TextButton(
+              style: TextButton.styleFrom(foregroundColor: Colors.red),
+              onPressed: () async {
+                await FirebaseFirestore.instance
+                    .collection('bookings')
+                    .doc(booking['id'])
+                    .update({'status': 'cancelled'});
+                Navigator.pop(context);
+              },
+              child: const Text("Decline"),
+            ),
             ElevatedButton(
-              style: ElevatedButton.styleFrom(backgroundColor: Colors.teal, foregroundColor: Colors.white),
+              style: ElevatedButton.styleFrom(backgroundColor: Colors.green),
+              onPressed: () async {
+                await FirebaseFirestore.instance
+                    .collection('bookings')
+                    .doc(booking['id'])
+                    .update({'status': 'confirmed'});
+                Navigator.pop(context);
+              },
+              child: const Text("Approve"),
+            ),
+          ],
+
+          // NORMAL: only verify & start when customer arrives
+          if (!isEmergency && booking['isVerified'] != true)
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.teal,
+                foregroundColor: Colors.white,
+              ),
               onPressed: () {
                 Navigator.pop(context);
                 _verifyOTP(index);
@@ -1320,11 +1459,11 @@ class _ActiveSessionPageState extends State<ActiveSessionPage> {
           ),
           const SizedBox(height: 20),
           Text(
-            session['customer'],
+            session['customer']?.toString() ?? '',
             style: TextStyle(fontSize: 32, fontWeight: FontWeight.bold, color: textColor),
           ),
           Text(
-            session['service'],
+            session['service']?.toString() ?? '',
             style: TextStyle(fontSize: 18, color: Colors.teal, fontWeight: FontWeight.w500),
           ),
         ],
